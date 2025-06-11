@@ -11,45 +11,73 @@ import (
 var store = map[string]string{}
 
 func handlerPost(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost || r.URL.Path != "/" {
-		http.Error(w, "", http.StatusBadRequest)
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	v, err := io.ReadAll(r.Body)
+
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "", http.StatusBadRequest)
+		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
 	}
-	orig := string(v)
-	sum := sha1.Sum([]byte(orig))
-	id := fmt.Sprintf("%x", sum)[:8]
-	store[id] = orig
+
+	if len(body) == 0 {
+		http.Error(w, "Empty URL", http.StatusBadRequest)
+		return
+	}
+
+	originalURL := string(body)
+	if !strings.HasPrefix(originalURL, "http://") && !strings.HasPrefix(originalURL, "https://") {
+		http.Error(w, "Invalid URL format", http.StatusBadRequest)
+		return
+	}
+
+	sum := sha1.Sum([]byte(originalURL))
+	id := strings.ToUpper(fmt.Sprintf("%x", sum)[:8])
+	store[id] = originalURL
+
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte("http://localhost:8080/" + id))
+	fmt.Fprintf(w, "http://localhost:8080/%s", id)
 }
 
 func handlerGet(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet || r.URL.Path == "/" {
-		http.Error(w, "", http.StatusBadRequest)
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
 	id := strings.TrimPrefix(r.URL.Path, "/")
-	orig, ok := store[id]
-	if !ok {
-		http.Error(w, "", http.StatusBadRequest)
+	if id == "" {
+		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
 	}
-	http.Redirect(w, r, orig, http.StatusTemporaryRedirect)
+
+	originalURL, ok := store[id]
+	if !ok {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Location", originalURL)
+	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
 func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
+		switch r.Method {
+		case http.MethodPost:
 			handlerPost(w, r)
-		} else {
+		case http.MethodGet:
 			handlerGet(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
-	http.ListenAndServe(":8080", nil)
+
+	fmt.Println("Starting server at :8080")
+	if err := http.ListenAndServe(":8080", nil); err != nil {
+		fmt.Printf("Server error: %v\n", err)
+	}
 }

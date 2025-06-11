@@ -33,9 +33,13 @@ func handlerPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	fmt.Println("Received URL:", originalURL)
+
 	sum := sha1.Sum([]byte(originalURL))
 	id := strings.ToUpper(fmt.Sprintf("%x", sum)[:8])
 	store[id] = originalURL
+	fmt.Println("Generated ID:", id)
+	fmt.Println("Current store:", store)
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
@@ -59,6 +63,7 @@ func handlerGet(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Not found", http.StatusNotFound)
 		return
 	}
+	fmt.Println("Redirecting to original URL:", originalURL)
 
 	w.Header().Set("Location", originalURL)
 	w.WriteHeader(http.StatusTemporaryRedirect)
@@ -69,12 +74,13 @@ func main() {
 		switch r.Method {
 		case http.MethodPost:
 			handlerPost(w, r)
-		case http.MethodGet:
-			handlerGet(w, r)
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+
+	http.HandleFunc("/{id}", handlerGet) // This will handle GET requests for the shortened URLs
+
 
 	fmt.Println("Starting server at :8080")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
